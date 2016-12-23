@@ -15,7 +15,7 @@ void normalize(const float * input, float * output, size_t count) {
 
 void int16_to_float(const int16_t * input, float * output, size_t count) {
 	for (size_t i = 0; i < count; i++) {
-		// 16-bit integers have a range biased towards negative - add .5 to nudge the center
-		output[i] = input[i] / 32768.0 + 0.5;
+		// 16-bit integers have a range biased towards negative - add 1 / 65536 to nudge the center
+		output[i] = input[i] / 32768.0 + 1.0 / 65536.0;
 	}
 }
