@@ -25,7 +25,7 @@ goertzel_t * goertzel_init(const float * frequencies, size_t freq_count, float s
 void goertzel_magnitude(goertzel_t * g, const float * samples, size_t sample_count, float * magnitude);
 
 /**
- * Destroys a Goertzel filter.
+ * Destroys a Goertzel filter. Accepts NULL.
  *
  * @param g Goertzel filter
  */
