@@ -11,6 +11,8 @@ typedef enum {
 	BFSK_ONE
 } bfsk_result_t;
 
+#define BFSK_INVERT_POLARITY 0x01
+
 /**
  * Initializes a new zero-crossing BFSK demodulator.
  *
@@ -20,18 +22,18 @@ typedef enum {
  * @param max_deviation Frequency variation tolerance, in hertz
  * @returns New demodulator, or NULL on error
  */
-bfsk_t * bfsk_init(float sample_rate, float zero, float one, float max_deviation);
+bfsk_t * bfsk_init(float sample_rate, float zero, float one, float max_deviation, int flags);
 
 /**
  * Analizes the input samples and returns the result. Updates sample and
  * sample count.
  *
  * @param d Demodulator object
- * @param samples_ptr Pointer to input samples
- * @param sample_count_ptr Pointer to number of samples
+ * @param samples Pointer to input samples
+ * @param sample_count Pointer to number of samples
  * @returns a bfsk_result
  */
-bfsk_result_t bfsk_analyze(bfsk_t * d, const float ** samples_ptr, size_t * sample_count_ptr);
+bfsk_result_t bfsk_analyze(bfsk_t * d, const float ** samples, size_t * sample_count);
 
 /**
  * Destroys a demodulator object. Accepts NULL.

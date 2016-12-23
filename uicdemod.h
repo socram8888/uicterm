@@ -1,0 +1,48 @@
+
+#pragma once
+#include <stdlib.h>
+
+typedef struct uicdemod uicdemod_t;
+
+typedef enum {
+	UICDEMOD_NONE,
+	UICDEMOD_WARNING,
+	UICDEMOD_LISTENING,
+	UICDEMOD_CHFREE,
+	UICDEMOD_PILOT,
+	UICDEMOD_SILENCE,
+	UICDEMOD_PACKET
+} uicdemod_status_t;
+
+/**
+ * Initializes a new UIC-751-3 demodulator.
+ *
+ * @param sample_rate Input sample rate
+ * @returns New demodulator, or NULL on error
+ */
+uicdemod_t * uicdemod_init(float sample_rate);
+
+/**
+ * Begins a new sample chunk analysis.
+ *
+ * @param d UIC-751-3 demodulator
+ */
+void uicdemod_analyze_begin(uicdemod_t * d);
+
+/**
+ * Analizes the input samples and returns the result. Updates sample and
+ * sample count. Should be called until UICDEMOD_NONE is returned.
+ *
+ * @param d UIC-751-3 demodulator
+ * @param samples Pointer to input samples
+ * @param sample_count Pointer to number of samples
+ * @returns detected event, or UICDEMOD_NONE if none
+ */
+uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_t * sample_count);
+
+/**
+ * Destroys a demodulator object. Accepts NULL.
+ *
+ * @param d UIC-751-3 demodulator
+ */
+void uicdemod_free(uicdemod_t * d);

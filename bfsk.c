@@ -1,18 +1,21 @@
 
-#include "demod.h"
+#include "bfsk.h"
 
-struct demod {
+struct bfsk {
 	float sample_rate;
 	float zero;
 	float one;
 	float max_deviation;
+	int flags;
 
 	int polarity;
 	int period_samples;
+
+	int total_samples;
 };
 
-demod_t * demod_init(float sample_rate, float zero, float one, float max_deviation) {
-	demod_t * d = malloc(sizeof(struct demod));
+bfsk_t * bfsk_init(float sample_rate, float zero, float one, float max_deviation, int flags) {
+	bfsk_t * d = malloc(sizeof(struct bfsk));
 	if (d == NULL) {
 		return NULL;
 	}
@@ -21,28 +24,37 @@ demod_t * demod_init(float sample_rate, float zero, float one, float max_deviati
 	d->zero = zero;
 	d->one = one;
 	d->max_deviation = max_deviation;
+	d->flags = flags;
 
 	d->polarity = -1;
 	d->period_samples = 0;
 
+	d->total_samples = 0;
+
 	return d;
 }
 
-demod_result_t demod_analyze(demod_t * d, const float ** samples, size_t * sample_count) {
-	demod_result_t result = DEMOD_END;
+bfsk_result_t bfsk_analyze(bfsk_t * d, const float ** samples, size_t * sample_count) {
+	bfsk_result_t result = BFSK_END;
 
-	while (*sample_count > 0 && result == DEMOD_END) {
+	while (*sample_count > 0 && result == BFSK_END) {
 		int cur_pol = **samples < 0 ? -1 : +1;
+		if (d->flags & BFSK_INVERT_POLARITY) {
+			cur_pol = -cur_pol;
+		}
 
 		if (d->polarity == -1 && cur_pol == +1) {
 			if (d->period_samples > 0) {
 				float freq = d->sample_rate / d->period_samples;
 				if (freq >= d->zero - d->max_deviation && freq <= d->zero + d->max_deviation) {
-					result = DEMOD_ZERO;
+					result = BFSK_ZERO;
+					//printf("%i %f 0\n", d->total_samples, freq);
 				} else if (freq >= d->one - d->max_deviation && freq <= d->one + d->max_deviation) {
-					result = DEMOD_ONE;
+					result = BFSK_ONE;
+					//printf("%i %f 1\n", d->total_samples, freq);
 				} else {
-					result = DEMOD_INVALID;
+					result = BFSK_INVALID;
+					//printf("%i %f R\n", d->total_samples, freq);
 				}
 			}
 
@@ -53,6 +65,7 @@ demod_result_t demod_analyze(demod_t * d, const float ** samples, size_t * sampl
 		}
 
 		d->polarity = cur_pol;
+		d->total_samples++;
 		(*samples)++;
 		(*sample_count)--;
 	}
@@ -60,6 +73,6 @@ demod_result_t demod_analyze(demod_t * d, const float ** samples, size_t * sampl
 	return result;
 }
 
-void demod_free(demod_t * d) {
+void bfsk_free(bfsk_t * d) {
 	free(d);
 }
