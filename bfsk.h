@@ -2,17 +2,17 @@
 #pragma once
 #include <stdlib.h>
 
-typedef struct demod demod_t;
+typedef struct bfsk bfsk_t;
 
 typedef enum {
-	DEMOD_END,
-	DEMOD_INVALID,
-	DEMOD_ZERO,
-	DEMOD_ONE
-} demod_result_t;
+	BFSK_END,
+	BFSK_INVALID,
+	BFSK_ZERO,
+	BFSK_ONE
+} bfsk_result_t;
 
 /**
- * Initializes a new zero-crossing demodulator.
+ * Initializes a new zero-crossing BFSK demodulator.
  *
  * @param sample_rate Input sample rate
  * @param zero Zero bit frequency, in hertz
@@ -20,7 +20,7 @@ typedef enum {
  * @param max_deviation Frequency variation tolerance, in hertz
  * @returns New demodulator, or NULL on error
  */
-demod_t * demod_init(float sample_rate, float zero, float one, float max_deviation);
+bfsk_t * bfsk_init(float sample_rate, float zero, float one, float max_deviation);
 
 /**
  * Analizes the input samples and returns the result. Updates sample and
@@ -29,13 +29,13 @@ demod_t * demod_init(float sample_rate, float zero, float one, float max_deviati
  * @param d Demodulator object
  * @param samples_ptr Pointer to input samples
  * @param sample_count_ptr Pointer to number of samples
- * @returns a demod_result
+ * @returns a bfsk_result
  */
-demod_result_t demod_analyze(demod_t * d, const float ** samples_ptr, size_t * sample_count_ptr);
+bfsk_result_t bfsk_analyze(bfsk_t * d, const float ** samples_ptr, size_t * sample_count_ptr);
 
 /**
- * Destroys a demodulator object.
+ * Destroys a demodulator object. Accepts NULL.
  *
  * @param d Demodulator object
  */
-void demod_free(demod_t * d);
+void bfsk_free(bfsk_t * d);
