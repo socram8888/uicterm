@@ -4,6 +4,12 @@
 
 typedef struct bfsk bfsk_t;
 
+struct bfsk_params {
+	float bps;
+	float space_hz;
+	float mark_hz;
+};
+
 typedef enum {
 	BFSK_END,
 	BFSK_INVALID,
@@ -11,18 +17,14 @@ typedef enum {
 	BFSK_ONE
 } bfsk_result_t;
 
-#define BFSK_INVERT_POLARITY 0x01
-
 /**
- * Initializes a new zero-crossing BFSK demodulator.
+ * Initializes a new correlator-based BFSK demodulator.
  *
+ * @param params BFSK modulation params
  * @param sample_rate Input sample rate
- * @param zero Zero bit frequency, in hertz
- * @param one One bit frequency, in hertz
- * @param max_deviation Frequency variation tolerance, in hertz
  * @returns New demodulator, or NULL on error
  */
-bfsk_t * bfsk_init(float sample_rate, float zero, float one, float max_deviation, int flags);
+bfsk_t * bfsk_init(const struct bfsk_params * params, float sample_rate);
 
 /**
  * Analizes the input samples and returns the result. Updates sample and
@@ -34,6 +36,17 @@ bfsk_t * bfsk_init(float sample_rate, float zero, float one, float max_deviation
  * @returns a bfsk_result
  */
 bfsk_result_t bfsk_analyze(bfsk_t * d, const float ** samples, size_t * sample_count);
+
+/**
+ * Sets window size for correlator output.
+ *
+ * Rather than using the correlator output as is, this implementation smooths
+ * its output by using last {@code win_size} correlator outputs.
+ *
+ * @param d Demodulator object
+ * @param win_size Window size
+ */
+void bfsk_set_window_size(bfsk_t * d, size_t win_size);
 
 /**
  * Destroys a demodulator object. Accepts NULL.

@@ -4,7 +4,7 @@
 #include "uicdemod.h"
 #include "signal.h"
 
-#define SAMPLE_RATE 37500
+#define SAMPLE_RATE 8000
 #define SAMPLE_COUNT SAMPLE_RATE / 20
 
 // From http://stackoverflow.com/a/7924459

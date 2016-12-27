@@ -16,6 +16,12 @@ struct uicdemod {
 	int current_signal_ticks;
 };
 
+static const struct bfsk_params fskparams = {
+	.bps = 600,
+	.mark_hz = 1300,
+	.space_hz = 1700
+};
+
 static const float freqs[] = {
 	1520, // Warning
 	1960, // Listening
@@ -36,7 +42,7 @@ uicdemod_t * uicdemod_init(float sample_rate) {
 	}
 
 	// TODO: configurable deviation
-	d->demod = bfsk_init(sample_rate, 1700, 1300, 200, BFSK_INVERT_POLARITY);
+	d->demod = bfsk_init(&fskparams, sample_rate);
 	if (d->demod == NULL) {
 		uicdemod_free(d);
 		return NULL;
@@ -120,6 +126,7 @@ uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_
 				case BFSK_ZERO:
 				case BFSK_ONE:
 					bit = (bfskres == BFSK_ONE ? 1 : 0);
+					printf("%i", bit);
 
 					if (telegram_feed(d->telegram, bit) == TELEGRAM_OK) {
 						status = UICDEMOD_PACKET;
@@ -128,6 +135,7 @@ uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_
 					break;
 
 				case BFSK_INVALID:
+					printf("R\n");
 					telegram_reset(d->telegram);
 					break;
 
