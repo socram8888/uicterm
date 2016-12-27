@@ -91,8 +91,6 @@ bfsk_t * bfsk_init(const struct bfsk_params * params, float sample_rate) {
 	d->prev_idx = 0;
 	d->prev_weight = 1 - (d->prev_size - x);
 
-	printf("X: %f %i %f\n", x, d->prev_size, d->prev_weight);
-
 	d->prev = malloc(d->prev_size * sizeof(float));
 	if (d == NULL) {
 		bfsk_free(d);
@@ -129,12 +127,12 @@ bfsk_result_t bfsk_analyze(bfsk_t * d, const float ** samples, size_t * sample_c
 			float prevsample =
 					d->prev[d->prev_idx] * d->prev_weight +
 					d->prev[previdx] * (1 - d->prev_weight);
-#if 0
+/*
 			printf("I ");
 			printf("prev[%i] * %f + prev[%i] * %f ", d->prev_idx, d->prev_weight, previdx, 1 - d->prev_weight);
 			printf("= %f * %f + %f * %f ", d->prev[d->prev_idx], d->prev_weight, d->prev[previdx], 1 - d->prev_weight);
 			printf("= %f\n", prevsample);
-#endif
+*/
 
 			// Calculate correlation
 			d->corr[d->corr_idx] = sample * prevsample;
@@ -155,10 +153,12 @@ bfsk_result_t bfsk_analyze(bfsk_t * d, const float ** samples, size_t * sample_c
 				if (d->bit_rem_samples == 0) {
 					d->bit_rem_samples = d->sample_rate / d->params.bps;
 
-					if (d->params.mark_hz < d->params.space_hz) {
-						result = polarity == -1 ? BFSK_ONE : BFSK_ZERO;
+					if ((polarity == 1) ^ (d->params.mark_hz < d->params.space_hz)) {
+						//printf("1");
+						result = BFSK_ONE;
 					} else {
-						result = polarity == +1 ? BFSK_ONE : BFSK_ZERO;
+						//printf("0");
+						result = BFSK_ZERO;
 					}
 					d->emitted_bit = true;
 				}

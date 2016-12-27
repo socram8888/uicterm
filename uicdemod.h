@@ -1,6 +1,7 @@
 
 #pragma once
 #include <stdlib.h>
+#include "telegram.h"
 
 typedef struct uicdemod uicdemod_t;
 
@@ -39,6 +40,12 @@ void uicdemod_analyze_begin(uicdemod_t * d);
  * @returns detected event, or UICDEMOD_NONE if none
  */
 uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_t * sample_count);
+
+/**
+ * Retrieves latest read telegram. Should be accessed right after
+ * {@code uicdemod_analyze} returns {@code UICDEMOD_PACKET}.
+ */
+telegram_t * uicdemod_get_telegram(uicdemod_t * d);
 
 /**
  * Destroys a demodulator object. Accepts NULL.

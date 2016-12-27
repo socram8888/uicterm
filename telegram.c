@@ -30,8 +30,13 @@ int telegram_train_number(telegram_t * t) {
 		return -1;
 	}
 
-	// TODO: figure bit mask
-	return 0;
+	uint32_t train = (t->bits >> 15) & 0xFFFFFF;
+
+	// The bits for each BCD digit are in reverse - undo it
+	train = (train & 0xAAAAAA) >> 1 | (train & 0x555555) << 1;
+	train = (train & 0xCCCCCC) >> 2 | (train & 0x333333) << 2;
+
+	return train;
 }
 
 int telegram_code_number(telegram_t * t) {
@@ -39,17 +44,33 @@ int telegram_code_number(telegram_t * t) {
 		return -1;
 	}
 
-	// TODO: figure bit mask
-	return 0;
+	return (t->bits >> 7) & 0xFF;
 }
 
 telegram_status_t telegram_feed(telegram_t * t, int bit) {
 	if (t->status == TELEGRAM_OK) {
 		t->bit_count = 0;
+		t->status = TELEGRAM_MORE;
 	}
 
-	// TODO: do stuff
+	t->bits = t->bits << 1 | bit;
+	if (t->bit_count < 51) {
+		t->bit_count++;
 
+		if (t->bit_count < 51) {
+			return t->status;
+		}
+	}
+
+	uint32_t syncbits = (t->bits >> 39) & 0xFFF;
+	if (syncbits != 0xFF2) {
+		t->status = TELEGRAM_NO_SYNC;
+		return t->status;
+	}
+
+	// TODO: how does the CRC work? figure out and check
+
+	t->status = TELEGRAM_OK;
 	return t->status;
 }
 

@@ -2,7 +2,6 @@
 #include "uicdemod.h"
 #include "goertzel.h"
 #include "bfsk.h"
-#include "telegram.h"
 #include "signal.h"
 
 struct uicdemod {
@@ -117,7 +116,7 @@ uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_
 	}
 
 	// Signal 4, aka no signal
-	if (d->current_signal == 4) {
+	if (1 || d->current_signal == 4) {
 		while (status == UICDEMOD_NONE && *sample_count > 0) {
 			bfsk_result_t bfskres = bfsk_analyze(d->demod, samples, sample_count);
 			int bit;
@@ -126,7 +125,6 @@ uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_
 				case BFSK_ZERO:
 				case BFSK_ONE:
 					bit = (bfskres == BFSK_ONE ? 1 : 0);
-					printf("%i", bit);
 
 					if (telegram_feed(d->telegram, bit) == TELEGRAM_OK) {
 						status = UICDEMOD_PACKET;
@@ -135,7 +133,6 @@ uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_
 					break;
 
 				case BFSK_INVALID:
-					printf("R\n");
 					telegram_reset(d->telegram);
 					break;
 
@@ -146,6 +143,10 @@ uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_
 	}
 
 	return status;
+}
+
+telegram_t * uicdemod_get_telegram(uicdemod_t * d) {
+	return d->telegram;
 }
 
 void uicdemod_free(uicdemod_t * d) {

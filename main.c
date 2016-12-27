@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "uicdemod.h"
+#include "telegram.h"
 #include "signal.h"
 
 #define SAMPLE_RATE 8000
@@ -12,14 +13,6 @@
 #	include <fcntl.h>
 #	include <io.h>
 #endif
-
-static char * signals[] = {
-	"Warning",
-	"Listening",
-	"Free",
-	"Pilot",
-	"Noise"
-};
 
 int main() {
 	#ifdef _WIN32
@@ -35,20 +28,47 @@ int main() {
 	int16_t sample_ints[SAMPLE_COUNT];
 	float timestamp = 0;
 
-	while (fread(sample_ints, sizeof(int16_t), SAMPLE_COUNT, stdin) == SAMPLE_COUNT) {
+	size_t sample_count = fread(sample_ints, sizeof(int16_t), SAMPLE_COUNT, stdin);
+	while (sample_count > 0) {
 		float samples[SAMPLE_COUNT];
-		int16_to_float(sample_ints, samples, SAMPLE_COUNT);
+		int16_to_float(sample_ints, samples, sample_count);
 
 		uicdemod_analyze_begin(uic);
 
 		const float * sample_ptr = samples;
-		size_t sample_count = SAMPLE_COUNT;
 		uicdemod_status_t event = uicdemod_analyze(uic, &sample_ptr, &sample_count);
 		while (event != UICDEMOD_NONE) {
-			printf("EVENT %i\n", event);
+			telegram_t * telegram;
+			switch (event) {
+				case UICDEMOD_NONE:
+					assert(0);
+					break;
+				case UICDEMOD_PACKET:
+					telegram = uicdemod_get_telegram(uic);
+					printf("Packet %06X %02X\n", telegram_train_number(telegram), telegram_code_number(telegram));
+					break;
+				case UICDEMOD_WARNING:
+					printf("Warning\n");
+					break;
+				case UICDEMOD_LISTENING:
+					printf("Listening\n");
+					break;
+				case UICDEMOD_CHFREE:
+					printf("Channel free\n");
+					break;
+				case UICDEMOD_PILOT:
+					printf("Voice pilot\n");
+					break;
+				case UICDEMOD_SILENCE:
+					printf("Silence\n");
+					break;
+			}
+			fflush(stdout);
 
 			event = uicdemod_analyze(uic, &sample_ptr, &sample_count);
 		}
+
+		sample_count = fread(sample_ints, sizeof(int16_t), SAMPLE_COUNT, stdin);
 	}
 
 	uicdemod_free(uic);
