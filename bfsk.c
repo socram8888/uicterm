@@ -65,14 +65,9 @@ struct bfsk {
 	int polarity;
 
 	/**
-	 * Samples remaining to emit the next bit with current polarity
+	 * Number of bits detected with current polarity
 	 */
-	size_t bit_rem_samples;
-
-	/**
-	 * True if a bit with the current polarity has been detected successfully
-	 */
-	bool emitted_bit;
+	float pol_bits;
 };
 
 bfsk_t * bfsk_init(const struct bfsk_params * params, float sample_rate) {
@@ -108,7 +103,7 @@ bfsk_t * bfsk_init(const struct bfsk_params * params, float sample_rate) {
 	}
 
 	d->polarity = 0;
-	d->emitted_bit = false;
+	d->pol_bits = 0;
 
 	return d;
 }
@@ -149,10 +144,11 @@ bfsk_result_t bfsk_analyze(bfsk_t * d, const float ** samples, size_t * sample_c
 
 			int polarity = corrsum >= 0 ? 1 : -1;
 			if (d->polarity == polarity) {
-				d->bit_rem_samples--;
-				if (d->bit_rem_samples == 0) {
-					d->bit_rem_samples = d->sample_rate / d->params.bps;
+				int old_int = (int) d->pol_bits;
+				d->pol_bits += d->params.bps / d->sample_rate;
+				int cur_int = (int) d->pol_bits;
 
+				if (old_int < cur_int) {
 					if ((polarity == 1) ^ (d->params.mark_hz < d->params.space_hz)) {
 						//printf("1");
 						result = BFSK_ONE;
@@ -160,17 +156,16 @@ bfsk_result_t bfsk_analyze(bfsk_t * d, const float ** samples, size_t * sample_c
 						//printf("0");
 						result = BFSK_ZERO;
 					}
-					d->emitted_bit = true;
 				}
 			} else {
-				if (!d->emitted_bit) {
+				if (d->pol_bits < 1) {
 					result = BFSK_INVALID;
 				}
 
 				d->polarity = polarity;
-				// Divide by two to sample in the middle of the bit
-				d->bit_rem_samples = d->sample_rate / d->params.bps / 2;
-				d->emitted_bit = false;
+
+				// Half bit to sample in the middle
+				d->pol_bits = 0.5;
 			}
 		} else {
 			d->prev_count++;
