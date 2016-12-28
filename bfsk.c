@@ -80,7 +80,7 @@ bfsk_t * bfsk_init(const struct bfsk_params * params, float sample_rate) {
 	d->sample_rate = sample_rate;
 
 	// TODO: this is hardcoded for 1700 and 1300Hz - calculate it properly
-	float x = sample_rate * 212.0 / 176800.0;
+	float x = sample_rate * 350.0 / 300000.0;
 	d->prev_size = ceil(x);
 	d->prev_count = 0;
 	d->prev_idx = 0;
@@ -92,7 +92,9 @@ bfsk_t * bfsk_init(const struct bfsk_params * params, float sample_rate) {
 		return NULL;
 	}
 
-	d->corr_size = 5;
+	// Initialize by default with a correlation buffer size of 3/5 of bit
+	// It's worked fine in my tests
+	d->corr_size = (sample_rate * 3) / (d->params.bps * 5);
 	d->corr_count = 0;
 	d->corr_idx = 0;
 
