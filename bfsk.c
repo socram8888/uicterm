@@ -198,5 +198,10 @@ bfsk_result_t bfsk_analyze(bfsk_t * d, const float ** samples, size_t * sample_c
 }
 
 void bfsk_free(bfsk_t * d) {
+	if (d == NULL) {
+		return;
+	}
+
+	free(d->prev);
 	free(d);
 }
