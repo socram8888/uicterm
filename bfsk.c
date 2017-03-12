@@ -1,7 +1,6 @@
 
 #include "bfsk.h"
 #include <math.h>
-#include <stdint.h>
 #include <stdbool.h>
 
 struct bfsk {
@@ -43,32 +42,32 @@ struct bfsk {
 	/**
 	 * Last correlator outputs
 	 */
-	uint64_t corr;
+	float * corr;
 
 	/**
-	 * Number of last correlator outputs to keep
+	 * Correlator buffer size
 	 */
-	uint8_t corr_size;
+	size_t corr_size;
 
 	/**
 	 * Number of values in {@code corr}
 	 */
-	uint8_t corr_count;
+	size_t corr_count;
 
 	/**
-	 * Sum of last correlator outputs: negative for low frequency, or positive for high frequency
+	 * Index of oldest value in correlator outputs buffer
 	 */
-	int8_t corr_sum;
+	size_t corr_idx;
+
+	/**
+	 * Last correlator sign: -1 for low frequency, or +1 for high frequency
+	 */
+	int polarity;
 
 	/**
 	 * Number of bits detected with current polarity
 	 */
 	float pol_bits;
-
-	/**
-	 * Boolean to avoid spamming with resets
-	 */
-	bool last_was_reset;
 };
 
 bfsk_t * bfsk_init(const struct bfsk_params * params, float sample_rate) {
@@ -93,21 +92,20 @@ bfsk_t * bfsk_init(const struct bfsk_params * params, float sample_rate) {
 		return NULL;
 	}
 
-	d->corr = 0;
-	d->corr_count = 0;
-
-	// Initialize by default with a correlation buffer size of 4/5 of bit
+	// Initialize by default with a correlation buffer size of 3/5 of bit
 	// It's worked fine in my tests
-	d->corr_size = (sample_rate * 4) / (d->params.bps * 5);
+	d->corr_size = (sample_rate * 3) / (d->params.bps * 5);
+	d->corr_count = 0;
+	d->corr_idx = 0;
 
-	// Limit to 63 (64 minus the old bit)
-	if (d->corr_size > 63) {
-		d->corr_size = 63;
+	d->corr = malloc(d->corr_size * sizeof(float));
+	if (d == NULL) {
+		bfsk_free(d);
+		return NULL;
 	}
 
-	d->corr_sum = 0;
+	d->polarity = 0;
 	d->pol_bits = 0;
-	d->last_was_reset = false;
 
 	return d;
 }
@@ -133,51 +131,40 @@ bfsk_result_t bfsk_analyze(bfsk_t * d, const float ** samples, size_t * sample_c
 			printf("= %f\n", prevsample);
 */
 
-			bool was_positive = d->corr_sum >= 0;
-
-			// Calculate correlation, then adjust the sum and save so we can de-adjust later
-			if (sample * prevsample >= 0) {
-				d->corr_sum++;
-				d->corr = d->corr << 1 | 1;
-			} else {
-				d->corr_sum--;
-				d->corr = d->corr << 1 | 0;
-			}
-
-			if (d->corr_count == d->corr_size) {
-				// Undo the addition/subtraction
-				if (d->corr & (1 << d->corr_size)) {
-					d->corr_sum--;
-				} else {
-					d->corr_sum++;
-				}
-			} else {
+			// Calculate correlation
+			d->corr[d->corr_idx] = sample * prevsample;
+			d->corr_idx = (d->corr_idx + 1) % d->corr_size;
+			if (d->corr_count < d->corr_size) {
 				d->corr_count++;
 			}
 
-			if (was_positive == (d->corr_sum >= 0)) {
-				// If the sign hasn't changed, then increment bit count
+			// Calculate sum of last correlator outputs
+			float corrsum = 0;
+			for (size_t i = 0; i < d->corr_count; i++) {
+				corrsum += d->corr[i];
+			}
+
+			int polarity = corrsum >= 0 ? 1 : -1;
+			if (d->polarity == polarity) {
 				int old_int = (int) d->pol_bits;
 				d->pol_bits += d->params.bps / d->sample_rate;
 				int cur_int = (int) d->pol_bits;
 
-				// If the integer bit has changed, emit a new bit
 				if (old_int < cur_int) {
-					if (was_positive ^ (d->params.mark_hz < d->params.space_hz)) {
+					if ((polarity == 1) ^ (d->params.mark_hz < d->params.space_hz)) {
 						//printf("1");
 						result = BFSK_ONE;
-						d->last_was_reset = false;
 					} else {
 						//printf("0");
 						result = BFSK_ZERO;
-						d->last_was_reset = false;
 					}
 				}
 			} else {
-				if (d->pol_bits < 1 && !d->last_was_reset) {
+				if (d->pol_bits < 1) {
 					result = BFSK_INVALID;
-					d->last_was_reset = true;
 				}
+
+				d->polarity = polarity;
 
 				// Half bit to sample in the middle
 				d->pol_bits = 0.5;
