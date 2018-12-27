@@ -83,7 +83,6 @@ uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_
 		// Get frequency exceeding a certainty level
 		int new_signal;
 		for (new_signal = 0; new_signal < 4; new_signal++) {
-			// TODO: configurable certainty
 			if (fmag[new_signal] > d->tone_certainty) {
 				break;
 			}
@@ -96,7 +95,6 @@ uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_
 			d->current_signal_ticks = 1;
 		}
 
-		// TODO: configurable window size
 		if (d->last_signal != d->current_signal && d->current_signal_ticks == d->required_ticks) {
 			switch (d->current_signal) {
 				case 0:
