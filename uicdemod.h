@@ -48,6 +48,24 @@ uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_
 telegram_t * uicdemod_get_telegram(uicdemod_t * d);
 
 /**
+ * Sets the required normalized value of a signal in the Goertzel filter to
+ * be considered as present.
+ *
+ * @param d UIC-751-3 demodulator
+ * @param threshold signal certainty
+ */
+void uicdemod_set_tone_certainty(uicdemod_t * d, float threshold);
+
+/**
+ * Sets the required number of consecutive buffers matching a certain signal
+ * for a tone signal to be valid.
+ *
+ * @param d UIC-751-3 demodulator
+ * @param ticks number of ticks
+ */
+void uicdemod_set_required_ticks(uicdemod_t * d, int ticks);
+
+/**
  * Destroys a demodulator object. Accepts NULL.
  *
  * @param d UIC-751-3 demodulator

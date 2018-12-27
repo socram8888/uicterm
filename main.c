@@ -12,6 +12,8 @@
 
 #define DEFAULT_SAMPLE_RATE 44100.0
 #define DEFAULT_BUFFER_MILLIS 50.0
+#define DEFAULT_TICKS 2
+#define DEFAULT_CERTAINTY 0.75
 
 // From http://stackoverflow.com/a/7924459
 #ifdef _WIN32
@@ -27,6 +29,8 @@ struct context {
 	int16_t * int_buffer;
 	float * float_buffer;
 	size_t sample_count;
+	float tone_certainty;
+	int required_ticks;
 
 	uicdemod_t * uic;
 };
@@ -41,10 +45,12 @@ void show_usage() {
 			"Audio options:\n"
 			"  -r[RATE]    sets input sample rate (default: %f)\n"
 			"  -b[MILLIS]  sets input buffer length, in milliseconds (default: %fms)\n"
+			"  -c[TH]      normalized threshold for a tone to be detected as present (default: %f)\n"
+			"  -t[TICKS]   number of consecutive buffers to have a tone before printing it (default: %d)\n"
 			"\n"
 			"Miscellaneous options:\n"
 			"  -h, -?      shows this help text\n",
-			me, DEFAULT_SAMPLE_RATE, DEFAULT_BUFFER_MILLIS
+			me, DEFAULT_SAMPLE_RATE, DEFAULT_BUFFER_MILLIS, DEFAULT_CERTAINTY, DEFAULT_TICKS
 	);
 }
 
@@ -53,9 +59,11 @@ bool parse_config(struct context * ctx, int argc, char ** argv) {
 
 	float sample_rate = DEFAULT_SAMPLE_RATE;
 	float buffer_millis = DEFAULT_BUFFER_MILLIS;
+	int required_ticks = DEFAULT_TICKS;
+	float tone_certainty = DEFAULT_CERTAINTY;
 
 	int c;
-	while ((c = getopt(argc, argv, "hr:b:")) != -1) {
+	while ((c = getopt(argc, argv, "hr:b:t:c:")) != -1) {
 		switch (c) {
 			case 'h':
 			case '?':
@@ -68,6 +76,14 @@ bool parse_config(struct context * ctx, int argc, char ** argv) {
 
 			case 'b':
 				buffer_millis = atof(optarg);
+				break;
+
+			case 'c':
+				tone_certainty = atof(optarg);
+				break;
+
+			case 't':
+				required_ticks = atoi(optarg);
 				break;
 
 			default:
@@ -88,8 +104,20 @@ bool parse_config(struct context * ctx, int argc, char ** argv) {
 		return false;
 	}
 
+	if (tone_certainty < 0 || tone_certainty > 1) {
+		fprintf(stderr, "Error: tone should be between 0 and 1\n");
+		return false;
+	}
+
+	if (required_ticks < 1) {
+		fprintf(stderr, "Error: required signal ticks must be at least one\n");
+		return false;
+	}
+
 	ctx->sample_rate = sample_rate;
 	ctx->sample_count = ceil(buffer_millis * sample_rate / 1000);
+	ctx->tone_certainty = tone_certainty;
+	ctx->required_ticks = required_ticks;
 
 	return true;
 }
@@ -125,6 +153,9 @@ bool init_ctx(struct context * ctx) {
 		destroy_ctx(ctx);
 		return false;
 	}
+
+	uicdemod_set_tone_certainty(ctx->uic, ctx->tone_certainty);
+	uicdemod_set_required_ticks(ctx->uic, ctx->required_ticks);
 
 	return true;
 }
@@ -197,4 +228,3 @@ int main(int argc, char ** argv) {
 	destroy_ctx(&ctx);
 	return 0;
 }
-	

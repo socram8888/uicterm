@@ -13,6 +13,8 @@ struct uicdemod {
 	int last_signal;
 	int current_signal;
 	int current_signal_ticks;
+	int required_ticks;
+	float tone_certainty;
 };
 
 static const struct bfsk_params fskparams = {
@@ -55,6 +57,8 @@ uicdemod_t * uicdemod_init(float sample_rate) {
 
 	d->last_signal = -1;
 	d->current_signal = -1;
+	d->required_ticks = 3;
+	d->tone_certainty = 0.75;
 
 	return d;
 }
@@ -80,7 +84,7 @@ uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_
 		int new_signal;
 		for (new_signal = 0; new_signal < 4; new_signal++) {
 			// TODO: configurable certainty
-			if (fmag[new_signal] > 0.9) {
+			if (fmag[new_signal] > d->tone_certainty) {
 				break;
 			}
 		}
@@ -93,7 +97,7 @@ uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_
 		}
 
 		// TODO: configurable window size
-		if (d->last_signal != d->current_signal && d->current_signal_ticks == 2) {
+		if (d->last_signal != d->current_signal && d->current_signal_ticks == d->required_ticks) {
 			switch (d->current_signal) {
 				case 0:
 					status = UICDEMOD_WARNING;
@@ -147,6 +151,14 @@ uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_
 
 telegram_t * uicdemod_get_telegram(uicdemod_t * d) {
 	return d->telegram;
+}
+
+void uicdemod_set_required_ticks(uicdemod_t * d, int ticks) {
+	d->required_ticks = ticks;
+}
+
+void uicdemod_set_tone_certainty(uicdemod_t * d, float threshold) {
+	d->tone_certainty = threshold;
 }
 
 void uicdemod_free(uicdemod_t * d) {
