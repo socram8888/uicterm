@@ -30,7 +30,7 @@ LIBSOBJ := $(filter-out $(BINS:%=%.o),$(OBJECTS))
 all: $(BINS)
 
 %: %.o $(LIBSOBJ)
-	$(CC) $(ALL_CFLAGS) $(LIBSOBJ) $< -o $@
+	$(CC) $(ALL_CFLAGS) $(LIBSOBJ) $< -o $@ -lm
 
 %.o: %.c $(HEADERS)
 	$(CC) $(ALL_CFLAGS) -c $< -o $@
