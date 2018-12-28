@@ -10,6 +10,8 @@ struct uicdemod {
 	telegram_t * telegram;
 
 	bool ran_goertzel;
+	bool has_telegram;
+
 	int last_signal;
 	int current_signal;
 	int current_signal_ticks;
@@ -29,6 +31,8 @@ static const float freqs[] = {
 	2280, // Channel free
 	2800  // Pilot
 };
+
+#define abs(x) ((x) < 0 ? -(x) : (x))
 
 uicdemod_t * uicdemod_init(float sample_rate) {
 	uicdemod_t * d = malloc(sizeof(struct uicdemod));
@@ -65,10 +69,16 @@ uicdemod_t * uicdemod_init(float sample_rate) {
 
 void uicdemod_analyze_begin(uicdemod_t * d) {
 	d->ran_goertzel = false;
+	d->has_telegram = false;
 }
 
 uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_t * sample_count) {
 	uicdemod_status_t status = UICDEMOD_NONE;
+
+	if (d->has_telegram) {
+		d->has_telegram = false;
+		return UICDEMOD_PACKET;
+	}
 
 	if (!d->ran_goertzel) {
 		d->ran_goertzel = true;
@@ -77,14 +87,20 @@ uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_
 		float fmag[4];
 		goertzel_magnitude(d->goertzel, *samples, *sample_count, fmag);
 
-		// Normalize magnitudes
-		normalize(fmag, fmag, 4);
+		// Calculate the signal power
+		float signal_power = 0;
+		for (size_t i = 0; i < *sample_count; i++) {
+			signal_power += abs((*samples)[i]);
+		}
 
 		// Get frequency exceeding a certainty level
-		int new_signal;
-		for (new_signal = 0; new_signal < 4; new_signal++) {
-			if (fmag[new_signal] > d->tone_certainty) {
-				break;
+		int new_signal = 4;
+		float new_signal_power = 0;
+		for (int i = 0; i < 4; i++) {
+			float fmag_norm = fmag[i] / signal_power;
+			if (fmag_norm > d->tone_certainty && fmag_norm > new_signal_power) {
+				new_signal = i;
+				new_signal_power = fmag_norm;
 			}
 		}
 
@@ -129,7 +145,15 @@ uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_
 					bit = (bfskres == BFSK_ONE ? 1 : 0);
 
 					if (telegram_feed(d->telegram, bit) == TELEGRAM_OK) {
-						status = UICDEMOD_PACKET;
+						if (d->last_signal != 4) {
+							status = UICDEMOD_SILENCE;
+							d->last_signal = 4;
+							d->current_signal = 4;
+							d->current_signal_ticks = 1;
+							d->has_telegram = true;
+						} else {
+							status = UICDEMOD_PACKET;
+						}
 					}
 
 					break;
