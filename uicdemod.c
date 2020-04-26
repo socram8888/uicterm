@@ -144,7 +144,9 @@ uicdemod_status_t uicdemod_analyze(uicdemod_t * d, const float ** samples, size_
 				case BFSK_ONE:
 					bit = (bfskres == BFSK_ONE ? 1 : 0);
 
-					if (telegram_feed(d->telegram, bit) == TELEGRAM_OK) {
+					telegram_feed(d->telegram, bit);
+					if (telegram_is_done(d->telegram)) {
+						// Ensure we always issue a silence before a packet
 						if (d->last_signal != 4) {
 							status = UICDEMOD_SILENCE;
 							d->last_signal = 4;

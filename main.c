@@ -32,6 +32,7 @@ struct context {
 	float tone_certainty;
 	int required_ticks;
 	bool show_raw_telegrams;
+	bool hide_damaged;
 
 	uicdemod_t * uic;
 };
@@ -49,6 +50,7 @@ void show_usage() {
 			"  -c[TH]      normalized threshold for a tone to be detected as present (default: %f)\n"
 			"  -t[TICKS]   number of consecutive buffers to have a tone before printing it (default: %d)\n"
 			"  -u          show unparsed, raw telegram bits\n"
+			"  -d          hide damaged packets not passing integrity checks\n"
 			"\n"
 			"Miscellaneous options:\n"
 			"  -h, -?      shows this help text\n",
@@ -65,8 +67,7 @@ bool parse_config(struct context * ctx, int argc, char ** argv) {
 	float tone_certainty = DEFAULT_CERTAINTY;
 
 	int c;
-	ctx->show_raw_telegrams = false;
-	while ((c = getopt(argc, argv, "hr:b:t:c:u")) != -1) {
+	while ((c = getopt(argc, argv, "hr:b:t:c:ud")) != -1) {
 		switch (c) {
 			case 'h':
 			case '?':
@@ -91,6 +92,10 @@ bool parse_config(struct context * ctx, int argc, char ** argv) {
 
 			case 'u':
 				ctx->show_raw_telegrams = true;
+				break;
+
+			case 'd':
+				ctx->hide_damaged = true;
 				break;
 
 			default:
@@ -185,13 +190,41 @@ void print_event(struct context * ctx, uicdemod_status_t event) {
 	switch (event) {
 		case UICDEMOD_PACKET:
 			telegram = uicdemod_get_telegram(ctx->uic);
-			printf("Packet %06X %02X (CRC: %02X)\n", telegram_train_number(telegram), telegram_code_number(telegram), telegram_crc(telegram));
+
+			switch (telegram_status(telegram)) {
+				case TELEGRAM_OK:
+					printf(
+							"Packet %06X %02X\n",
+							telegram_train_number(telegram),
+							telegram_code_number(telegram)
+					);
+					break;
+
+				case TELEGRAM_INTEGRITY:
+					if (!ctx->hide_damaged) {
+						printf(
+							"Packet %06X %02X (received CRC: %02X, correct: %02X)\n",
+							telegram_train_number(telegram),
+							telegram_code_number(telegram),
+							telegram_received_crc(telegram),
+							telegram_correct_crc(telegram)
+						);
+					}
+					break;
+
+				default:
+					// Should never happen
+					assert(0);
+			}
+
 			if (ctx->show_raw_telegrams) {
 				printf("Raw packet: ");
 				print_bits(telegram_raw(telegram), 39);
 				printf("\n");
 			}
+
 			break;
+
 		case UICDEMOD_WARNING:
 			printf("Warning\n");
 			break;
@@ -236,7 +269,8 @@ bool read_loop(struct context * ctx) {
 }
 
 int main(int argc, char ** argv) {
-	struct context ctx;
+	struct context ctx = { 0 };
+
 	if (!parse_config(&ctx, argc, argv)) {
 		return 1;
 	}

@@ -7,6 +7,7 @@ struct telegram {
 
 	int bit_count;
 	uint_least64_t bits;
+	uint8_t correct_crc;
 };
 
 telegram_t * telegram_init() {
@@ -51,12 +52,17 @@ int telegram_code_number(telegram_t * t) {
 	return (t->bits >> 7) & 0xFF;
 }
 
-int telegram_crc(telegram_t * t) {
+int telegram_received_crc(telegram_t * t) {
 	if (!telegram_is_done(t)) {
 		return -1;
 	}
 
-	return t->bits & 0x7F;
+	// Bits are inverted
+	return (t->bits & 0x7F) ^ 0x7F;
+}
+
+int telegram_correct_crc(telegram_t * t) {
+	return t->correct_crc;
 }
 
 int64_t telegram_raw(telegram_t * t) {
@@ -67,7 +73,18 @@ int64_t telegram_raw(telegram_t * t) {
 	return t->bits & 0x7FFFFFFFFFLL;
 }
 
-telegram_status_t telegram_feed(telegram_t * t, int bit) {
+#define CRC_POLY 0xE1
+uint_least64_t crc_calculate(uint_least64_t bits) {
+	for (int bpos = 38; bpos >= 7; bpos--) {
+		if (bits & (1ULL << bpos)) {
+			bits ^= (uint64_t) CRC_POLY << (bpos - 7);
+		}
+	}
+
+	return bits;
+}
+
+void telegram_feed(telegram_t * t, int bit) {
 	if (telegram_is_done(t)) {
 		t->bit_count = 0;
 		t->status = TELEGRAM_MORE;
@@ -78,20 +95,24 @@ telegram_status_t telegram_feed(telegram_t * t, int bit) {
 		t->bit_count++;
 
 		if (t->bit_count < 51) {
-			return t->status;
+			return;
 		}
 	}
 
 	uint32_t syncbits = (t->bits >> 39) & 0xFFF;
 	if (syncbits != 0xFF2) {
 		t->status = TELEGRAM_NO_SYNC;
-		return t->status;
+		return;
 	}
 
-	// TODO: how does the CRC work? figure out and check
+	uint8_t received_crc = (t->bits & 0x7F) ^ 0x7F;
+	t->correct_crc = crc_calculate(t->bits & ~0x7F) & 0x7F;
 
-	t->status = TELEGRAM_OK;
-	return t->status;
+	if (received_crc == t->correct_crc) {
+		t->status = TELEGRAM_OK;
+	} else {
+		t->status = TELEGRAM_INTEGRITY;
+	}
 }
 
 void telegram_reset(telegram_t * t) {
