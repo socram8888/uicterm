@@ -25,8 +25,12 @@ telegram_status_t telegram_status(telegram_t * t) {
 	return t->status;
 }
 
+bool telegram_is_done(telegram_t * t) {
+	return t->status == TELEGRAM_OK || t->status == TELEGRAM_INTEGRITY;
+}
+
 int telegram_train_number(telegram_t * t) {
-	if (t->status != TELEGRAM_OK) {
+	if (!telegram_is_done(t)) {
 		return -1;
 	}
 
@@ -40,15 +44,31 @@ int telegram_train_number(telegram_t * t) {
 }
 
 int telegram_code_number(telegram_t * t) {
-	if (t->status != TELEGRAM_OK) {
+	if (!telegram_is_done(t)) {
 		return -1;
 	}
 
 	return (t->bits >> 7) & 0xFF;
 }
 
+int telegram_crc(telegram_t * t) {
+	if (!telegram_is_done(t)) {
+		return -1;
+	}
+
+	return t->bits & 0x7F;
+}
+
+int64_t telegram_raw(telegram_t * t) {
+	if (!telegram_is_done(t)) {
+		return -1;
+	}
+
+	return t->bits & 0x7FFFFFFFFFLL;
+}
+
 telegram_status_t telegram_feed(telegram_t * t, int bit) {
-	if (t->status == TELEGRAM_OK) {
+	if (telegram_is_done(t)) {
 		t->bit_count = 0;
 		t->status = TELEGRAM_MORE;
 	}

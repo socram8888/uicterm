@@ -43,8 +43,16 @@ telegram_t * telegram_init();
 telegram_status_t telegram_status(telegram_t * t);
 
 /**
+ * Returns true if the telegram is done being received
+ *
+ * @param t Telegram object
+ * @returns Current telegram status
+ */
+bool telegram_is_done(telegram_t * t);
+
+/**
  * Returns telegram train number. Return value is only valid if current
- * telegram status is {@code TELEGRAM_OK}.
+ * telegram is done.
  *
  * @param t Telegram object
  * @returns Telegram train ID
@@ -52,13 +60,31 @@ telegram_status_t telegram_status(telegram_t * t);
 int telegram_train_number(telegram_t * t);
 
 /**
- * Returns telegram code. Return value is only valid if current telegram status
- * is {@code TELEGRAM_OK}.
+ * Returns telegram code. Return value is only valid if current telegram is
+ * done.
  *
  * @param t Telegram object
  * @returns Telegram code
  */
 int telegram_code_number(telegram_t * t);
+
+/**
+ * Returns telegram CRC. Return value is only valid if current telegram is
+ * done.
+ *
+ * @param t Telegram object
+ * @returns Telegram CRC
+ */
+int telegram_crc(telegram_t * t);
+
+/**
+ * Returns the raw telegram bits. Return value is only valid if current
+ * telegram is done.
+ *
+ * @param t Telegram object
+ * @returns Telegram bits
+ */
+int64_t telegram_raw(telegram_t * t);
 
 /**
  * Feeds a new bit to the telegram object

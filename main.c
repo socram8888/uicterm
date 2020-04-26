@@ -31,6 +31,7 @@ struct context {
 	size_t sample_count;
 	float tone_certainty;
 	int required_ticks;
+	bool show_raw_telegrams;
 
 	uicdemod_t * uic;
 };
@@ -47,6 +48,7 @@ void show_usage() {
 			"  -b[MILLIS]  sets input buffer length, in milliseconds (default: %fms)\n"
 			"  -c[TH]      normalized threshold for a tone to be detected as present (default: %f)\n"
 			"  -t[TICKS]   number of consecutive buffers to have a tone before printing it (default: %d)\n"
+			"  -u          show unparsed, raw telegram bits\n"
 			"\n"
 			"Miscellaneous options:\n"
 			"  -h, -?      shows this help text\n",
@@ -84,6 +86,10 @@ bool parse_config(struct context * ctx, int argc, char ** argv) {
 
 			case 't':
 				required_ticks = atoi(optarg);
+				break;
+
+			case 'u':
+				ctx->show_raw_telegrams = true;
 				break;
 
 			default:
@@ -160,12 +166,30 @@ bool init_ctx(struct context * ctx) {
 	return true;
 }
 
+void print_bits(uint64_t bits, int_least8_t len) {
+	uint64_t mask = (1ULL << len) >> 1;
+
+	while (mask != 0) {
+		if (bits & mask) {
+			printf("1");
+		} else {
+			printf("0");
+		}
+		mask = mask >> 1;
+	}
+}
+
 void print_event(struct context * ctx, uicdemod_status_t event) {
 	telegram_t * telegram;
 	switch (event) {
 		case UICDEMOD_PACKET:
 			telegram = uicdemod_get_telegram(ctx->uic);
-			printf("Packet %06X %02X\n", telegram_train_number(telegram), telegram_code_number(telegram));
+			printf("Packet %06X %02X (CRC: %02X)\n", telegram_train_number(telegram), telegram_code_number(telegram), telegram_crc(telegram));
+			if (ctx->show_raw_telegrams) {
+				printf("Raw packet: ");
+				print_bits(telegram_raw(telegram), 39);
+				printf("\n");
+			}
 			break;
 		case UICDEMOD_WARNING:
 			printf("Warning\n");
