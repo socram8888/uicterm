@@ -65,7 +65,8 @@ bool parse_config(struct context * ctx, int argc, char ** argv) {
 	float tone_certainty = DEFAULT_CERTAINTY;
 
 	int c;
-	while ((c = getopt(argc, argv, "hr:b:t:c:")) != -1) {
+	ctx->show_raw_telegrams = false;
+	while ((c = getopt(argc, argv, "hr:b:t:c:u")) != -1) {
 		switch (c) {
 			case 'h':
 			case '?':
