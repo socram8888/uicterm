@@ -1,4 +1,6 @@
 
+// Based on Cypress Semiconductor AN2336 ("PSoC®1 -Simplified FSK Detection")
+
 #include "bfsk.h"
 #include <math.h>
 #include <stdbool.h>
