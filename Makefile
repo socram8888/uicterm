@@ -3,8 +3,8 @@
 BINS = uicdemod
 
 # Compilation flags
-CFLAGS ?= -Wall -pedantic -O2
-ALL_CFLAGS = $(CFLAGS)
+CFLAGS = -Wall -pedantic -O2
+LDLIBS = -lm -lpulse -lpulse-simple
 
 # Commands
 INSTALL = /usr/bin/install -D
@@ -30,10 +30,10 @@ LIBSOBJ := $(filter-out $(BINS:%=%.o),$(OBJECTS))
 all: $(BINS)
 
 %: %.o $(LIBSOBJ)
-	$(CC) $(ALL_CFLAGS) $(LIBSOBJ) $< -o $@ -lm
+	$(CC) $(CFLAGS) $(LIBSOBJ) $< -o $@ $(LDLIBS)
 
 %.o: %.c $(HEADERS)
-	$(CC) $(ALL_CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 # Clean targets
 clean:

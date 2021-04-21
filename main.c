@@ -1,5 +1,7 @@
 
 #include <assert.h>
+#include <pulse/error.h>
+#include <pulse/simple.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -10,8 +12,8 @@
 #include "telegram.h"
 #include "signal.h"
 
-#define DEFAULT_SAMPLE_RATE 44100.0
-#define DEFAULT_BUFFER_MILLIS 50.0
+#define DEFAULT_SAMPLE_RATE 16000
+#define DEFAULT_BUFFER_MILLIS 50
 #define DEFAULT_TICKS 2
 #define DEFAULT_CERTAINTY 0.75
 
@@ -24,8 +26,10 @@
 static const char * me;
 
 struct context {
-	float sample_rate;
+	const char * source_name;
+	int sample_rate;
 
+	pa_simple * pulse_source;
 	int16_t * int_buffer;
 	float * float_buffer;
 	size_t sample_count;
@@ -45,8 +49,9 @@ void show_usage() {
 			"information according to railway standard UIC-751-3\n"
 			"\n"
 			"Audio options:\n"
-			"  -r[RATE]    sets input sample rate (default: %f)\n"
-			"  -b[MILLIS]  sets input buffer length, in milliseconds (default: %fms)\n"
+			"  -s[SOURCE]  pulse audio source name (required)\n"
+			"  -r[RATE]    sets input sample rate (default: %d)\n"
+			"  -b[MILLIS]  sets input buffer length, in milliseconds (default: %dms)\n"
 			"  -c[TH]      normalized threshold for a tone to be detected as present (default: %f)\n"
 			"  -t[TICKS]   number of consecutive buffers to have a tone before printing it (default: %d)\n"
 			"  -u          show unparsed, raw telegram bits\n"
@@ -61,33 +66,38 @@ void show_usage() {
 bool parse_config(struct context * ctx, int argc, char ** argv) {
 	me = argv[0];
 
-	float sample_rate = DEFAULT_SAMPLE_RATE;
-	float buffer_millis = DEFAULT_BUFFER_MILLIS;
-	int required_ticks = DEFAULT_TICKS;
-	float tone_certainty = DEFAULT_CERTAINTY;
+	ctx->sample_rate = DEFAULT_SAMPLE_RATE;
+	ctx->required_ticks = DEFAULT_TICKS;
+	ctx->tone_certainty = DEFAULT_CERTAINTY;
+
+	int buffer_millis = DEFAULT_BUFFER_MILLIS;
 
 	int c;
-	while ((c = getopt(argc, argv, "hr:b:t:c:ud")) != -1) {
+	while ((c = getopt(argc, argv, "hs:r:b:t:c:ud")) != -1) {
 		switch (c) {
 			case 'h':
 			case '?':
 				show_usage();
 				return false;
 
+			case 's':
+				ctx->source_name = optarg;
+				break;
+
 			case 'r':
-				sample_rate = atof(optarg);
+				ctx->sample_rate = atoi(optarg);
 				break;
 
 			case 'b':
-				buffer_millis = atof(optarg);
+				buffer_millis = atoi(optarg);
 				break;
 
 			case 'c':
-				tone_certainty = atof(optarg);
+				ctx->tone_certainty = atof(optarg);
 				break;
 
 			case 't':
-				required_ticks = atoi(optarg);
+				ctx->required_ticks = atoi(optarg);
 				break;
 
 			case 'u':
@@ -104,10 +114,15 @@ bool parse_config(struct context * ctx, int argc, char ** argv) {
 		}
 	}
 
-	if (sample_rate <= 0) {
+	if (!ctx->source_name) {
+		fprintf(stderr, "Error: PulseAudio source not set\n");
+		return false;
+	}
+
+	if (ctx->sample_rate <= 0) {
 		fprintf(stderr, "Error: invalid sample rate\n");
 		return false;
-	} else if (sample_rate < 11800) {
+	} else if (ctx->sample_rate < 11800) {
 		fprintf(stderr, "Warning: sample rate is too low, consider using 11800Hz or more\n");
 	}
 
@@ -116,20 +131,17 @@ bool parse_config(struct context * ctx, int argc, char ** argv) {
 		return false;
 	}
 
-	if (tone_certainty < 0 || tone_certainty > 1) {
+	if (ctx->tone_certainty < 0 || ctx->tone_certainty > 1) {
 		fprintf(stderr, "Error: tone should be between 0 and 1\n");
 		return false;
 	}
 
-	if (required_ticks < 1) {
+	if (ctx->required_ticks < 1) {
 		fprintf(stderr, "Error: required signal ticks must be at least one\n");
 		return false;
 	}
 
-	ctx->sample_rate = sample_rate;
-	ctx->sample_count = ceil(buffer_millis * sample_rate / 1000);
-	ctx->tone_certainty = tone_certainty;
-	ctx->required_ticks = required_ticks;
+	ctx->sample_count = ceil(buffer_millis * ctx->sample_rate / 1000);
 
 	return true;
 }
@@ -144,6 +156,19 @@ bool init_ctx(struct context * ctx) {
 	#ifdef _WIN32
 		_setmode(_fileno(stdin), _O_BINARY);
 	#endif
+
+	int pa_error;
+	pa_sample_spec pa_spec = {
+		.format = PA_SAMPLE_S16LE,
+		.rate = ctx->sample_rate,
+		.channels = 1
+	};
+	ctx->pulse_source = pa_simple_new(NULL, me, PA_STREAM_RECORD, ctx->source_name, "uicterm", &pa_spec, NULL, NULL, &pa_error);
+	if (!ctx->pulse_source) {
+		fprintf(stderr, "Error: pa_simple_new() failed: %s\n", pa_strerror(pa_error));
+		destroy_ctx(ctx);
+		return false;
+	}
 
 	ctx->int_buffer = malloc(ctx->sample_count * sizeof(int16_t));
 	if (ctx->int_buffer == NULL) {
@@ -250,20 +275,22 @@ void print_event(struct context * ctx, uicdemod_status_t event) {
 
 bool read_loop(struct context * ctx) {
 	while (1) {
-		size_t sample_count = fread(ctx->int_buffer, sizeof(int16_t), ctx->sample_count, stdin);
-		if (sample_count == 0) {
-			return feof(stdin);
+		int pa_error;
+		if (pa_simple_read(ctx->pulse_source, ctx->int_buffer, ctx->sample_count * sizeof(int16_t), &pa_error) < 0) {
+			fprintf(stderr, "Error: pa_simple_read() failed: %s\n", pa_strerror(pa_error));
+			return false;
 		}
 
-		int16_to_float(ctx->int_buffer, ctx->float_buffer, sample_count);
+		int16_to_float(ctx->int_buffer, ctx->float_buffer, ctx->sample_count);
 
 		uicdemod_analyze_begin(ctx->uic);
 
 		const float * sample_ptr = ctx->float_buffer;
-		uicdemod_status_t event = uicdemod_analyze(ctx->uic, &sample_ptr, &sample_count);
+		size_t remaining_samples = ctx->sample_count;
+		uicdemod_status_t event = uicdemod_analyze(ctx->uic, &sample_ptr, &remaining_samples);
 		while (event != UICDEMOD_NONE) {
 			print_event(ctx, event);
-			event = uicdemod_analyze(ctx->uic, &sample_ptr, &sample_count);
+			event = uicdemod_analyze(ctx->uic, &sample_ptr, &remaining_samples);
 		}
 	}
 }
