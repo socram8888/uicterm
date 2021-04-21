@@ -30,7 +30,6 @@ struct context {
 	int sample_rate;
 
 	pa_simple * pulse_source;
-	int16_t * int_buffer;
 	float * float_buffer;
 	size_t sample_count;
 	float tone_certainty;
@@ -147,8 +146,8 @@ bool parse_config(struct context * ctx, int argc, char ** argv) {
 }
 
 void destroy_ctx(struct context * ctx) {
-	free(ctx->int_buffer);
 	free(ctx->float_buffer);
+	pa_simple_free(ctx->pulse_source);
 	uicdemod_free(ctx->uic);
 }
 
@@ -159,20 +158,13 @@ bool init_ctx(struct context * ctx) {
 
 	int pa_error;
 	pa_sample_spec pa_spec = {
-		.format = PA_SAMPLE_S16LE,
+		.format = PA_SAMPLE_FLOAT32LE,
 		.rate = ctx->sample_rate,
 		.channels = 1
 	};
 	ctx->pulse_source = pa_simple_new(NULL, me, PA_STREAM_RECORD, ctx->source_name, "uicterm", &pa_spec, NULL, NULL, &pa_error);
 	if (!ctx->pulse_source) {
 		fprintf(stderr, "Error: pa_simple_new() failed: %s\n", pa_strerror(pa_error));
-		destroy_ctx(ctx);
-		return false;
-	}
-
-	ctx->int_buffer = malloc(ctx->sample_count * sizeof(int16_t));
-	if (ctx->int_buffer == NULL) {
-		fprintf(stderr, "Error: could not allocate buffer for %u integers\n", (unsigned int) ctx->sample_count);
 		destroy_ctx(ctx);
 		return false;
 	}
@@ -276,12 +268,10 @@ void print_event(struct context * ctx, uicdemod_status_t event) {
 bool read_loop(struct context * ctx) {
 	while (1) {
 		int pa_error;
-		if (pa_simple_read(ctx->pulse_source, ctx->int_buffer, ctx->sample_count * sizeof(int16_t), &pa_error) < 0) {
+		if (pa_simple_read(ctx->pulse_source, ctx->float_buffer, ctx->sample_count * sizeof(float), &pa_error) < 0) {
 			fprintf(stderr, "Error: pa_simple_read() failed: %s\n", pa_strerror(pa_error));
 			return false;
 		}
-
-		int16_to_float(ctx->int_buffer, ctx->float_buffer, ctx->sample_count);
 
 		uicdemod_analyze_begin(ctx->uic);
 
