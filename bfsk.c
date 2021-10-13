@@ -3,6 +3,7 @@
 
 #include "bfsk.h"
 #include <math.h>
+#include <stdint.h>
 #include <stdbool.h>
 
 struct bfsk {
@@ -19,7 +20,7 @@ struct bfsk {
 	/**
 	 * Previous samples buffer
 	 */
-	float * prev;
+	int_fast8_t * prev;
 
 	/**
 	 * Size, in number of floats, of previous sample buffer
@@ -27,24 +28,14 @@ struct bfsk {
 	size_t prev_size;
 
 	/**
-	 * Number of samples in previous sample buffer
-	 */
-	size_t prev_count;
-
-	/**
 	 * Index of oldest sample in sample buffer
 	 */
 	size_t prev_idx;
 
 	/**
-	 * Weight of last sample in sample buffer
-	 */
-	float prev_weight;
-
-	/**
 	 * Last correlator outputs
 	 */
-	float * corr;
+	int_fast8_t * corr;
 
 	/**
 	 * Correlator buffer size
@@ -52,24 +43,43 @@ struct bfsk {
 	size_t corr_size;
 
 	/**
-	 * Number of values in {@code corr}
-	 */
-	size_t corr_count;
-
-	/**
 	 * Index of oldest value in correlator outputs buffer
 	 */
 	size_t corr_idx;
 
 	/**
-	 * Last correlator sign: -1 for low frequency, or +1 for high frequency
+	 * Sum of all values in the correlator buffer
 	 */
-	int polarity;
+	int_fast32_t corr_sum;
 
 	/**
-	 * Number of bits detected with current polarity
+	 * 1 if output of the correlator should be inverted, else 0.
+	 *
+	 * The correlator sum's sign indicates if the frequency is leaning towards the lower
+	 * frequency (negative sum) or high frequency (positive sum).
+	 *
+	 * If we assume the space's frequency is lower than the mark's, a negative indicates a
+	 * binary 0 and a positive indicates a binary 1.
+	 *
+	 * However, if the space's frequency is higher than the mark's, the above logic needs to
+	 * be inverted. This flag marks that.
 	 */
-	float pol_bits;
+	int_fast8_t invert_corr;
+
+	/**
+	 * Last emitted bit, or -1 if none has been emitted yet.
+	 */
+	int_fast8_t previous_bit;
+
+	/**
+	 * Number of consecutive bits emitted since last change.
+	 */
+	float emitted_bits;
+
+	/**
+	 * Bits per sample.
+	 */
+	float bits_per_sample;
 };
 
 bfsk_t * bfsk_init(const struct bfsk_params * params, float sample_rate) {
@@ -83,31 +93,30 @@ bfsk_t * bfsk_init(const struct bfsk_params * params, float sample_rate) {
 
 	// TODO: this is hardcoded for 1700 and 1300Hz - calculate it properly
 	float x = sample_rate * 350.0 / 300000.0;
-	d->prev_size = ceil(x);
-	d->prev_count = 0;
+	d->prev_size = ceil(x) - 1;
 	d->prev_idx = 0;
-	d->prev_weight = 1 - (d->prev_size - x);
 
-	d->prev = malloc(d->prev_size * sizeof(float));
+	d->prev = calloc(sizeof(*d->prev), d->prev_size);
 	if (d == NULL) {
 		bfsk_free(d);
 		return NULL;
 	}
 
-	// Initialize by default with a correlation buffer size of 3/5 of bit
+	// Initialize by default with a correlation buffer size of 6/8 of bit
 	// It's worked fine in my tests
-	d->corr_size = (sample_rate * 3) / (d->params.bps * 5);
-	d->corr_count = 0;
+	d->corr_size = (sample_rate * 6) / (d->params.bps * 8);
 	d->corr_idx = 0;
+	d->corr_sum = 0;
+	d->invert_corr = d->params.mark_hz < d->params.space_hz;
 
-	d->corr = malloc(d->corr_size * sizeof(float));
+	d->corr = calloc(sizeof(*d->corr), d->corr_size);
 	if (d == NULL) {
 		bfsk_free(d);
 		return NULL;
 	}
 
-	d->polarity = 0;
-	d->pol_bits = 0;
+	d->previous_bit = -1;
+	d->emitted_bits = 0;
 
 	return d;
 }
@@ -116,67 +125,56 @@ bfsk_result_t bfsk_analyze(bfsk_t * d, const float ** samples, size_t * sample_c
 	bfsk_result_t result = BFSK_END;
 
 	while (*sample_count > 0 && result == BFSK_END) {
-		float sample = **samples;
+		// Calculate the sign of the current sample
+		int_fast8_t sample_sign = **samples >= 0 ? 1 : -1;
 
-		if (d->prev_count == d->prev_size) {
-			// Calculate index of the sample before last
-			size_t previdx = (d->prev_idx + 1) % d->prev_count;
+		/*
+		 * Multiply with the output of the delay.
+		 *
+		 * We don't need to special case the start since the buffers are all zero,
+		 * so the resulting multiplications will be zero.
+		 */
+		int_fast8_t new_corr_sign = d->prev[d->prev_idx] * sample_sign;
 
-			// Linearly interpolate previous sample
-			float prevsample =
-					d->prev[d->prev_idx] * d->prev_weight +
-					d->prev[previdx] * (1 - d->prev_weight);
-/*
-			printf("I ");
-			printf("prev[%i] * %f + prev[%i] * %f ", d->prev_idx, d->prev_weight, previdx, 1 - d->prev_weight);
-			printf("= %f * %f + %f * %f ", d->prev[d->prev_idx], d->prev_weight, d->prev[previdx], 1 - d->prev_weight);
-			printf("= %f\n", prevsample);
-*/
+		// Update correlator sum
+		int_fast8_t old_corr_sign = d->corr[d->corr_idx];
+		d->corr_sum = d->corr_sum - old_corr_sign + new_corr_sign;
 
-			// Calculate correlation
-			d->corr[d->corr_idx] = sample * prevsample;
-			d->corr_idx = (d->corr_idx + 1) % d->corr_size;
-			if (d->corr_count < d->corr_size) {
-				d->corr_count++;
-			}
+		// Overwrite old correlator output
+		d->corr[d->corr_idx] = new_corr_sign;
+		d->corr_idx = (d->corr_idx + 1) % d->corr_size;
 
-			// Calculate sum of last correlator outputs
-			float corrsum = 0;
-			for (size_t i = 0; i < d->corr_count; i++) {
-				corrsum += d->corr[i];
-			}
+		// Invert if required
+		int_fast8_t curr_bit = (d->corr_sum >= 0) ^ d->invert_corr;
+		if (curr_bit == d->previous_bit) {
+			// Cast to int to floor it
+			int_fast32_t old_int = (int_fast32_t) d->emitted_bits;
+			d->emitted_bits += d->params.bps / d->sample_rate;
+			int_fast32_t cur_int = (int_fast32_t) d->emitted_bits;
 
-			int polarity = corrsum >= 0 ? 1 : -1;
-			if (d->polarity == polarity) {
-				int old_int = (int) d->pol_bits;
-				d->pol_bits += d->params.bps / d->sample_rate;
-				int cur_int = (int) d->pol_bits;
-
-				if (old_int < cur_int) {
-					if ((polarity == 1) ^ (d->params.mark_hz < d->params.space_hz)) {
-						//printf("1");
-						result = BFSK_ONE;
-					} else {
-						//printf("0");
-						result = BFSK_ZERO;
-					}
+			// If we have received a new full bit, feed it
+			if (old_int < cur_int) {
+				if (d->previous_bit) {
+					//printf("1");
+					result = BFSK_ONE;
+				} else {
+					//printf("0");
+					result = BFSK_ZERO;
 				}
-			} else {
-				if (d->pol_bits < 1) {
-					result = BFSK_INVALID;
-				}
-
-				d->polarity = polarity;
-
-				// Half bit to sample in the middle
-				d->pol_bits = 0.5;
 			}
 		} else {
-			d->prev_count++;
+			if (d->emitted_bits < 1) {
+				result = BFSK_INVALID;
+			}
+
+			d->previous_bit = curr_bit;
+
+			// Half bit to sample in the middle
+			d->emitted_bits = 0.5;
 		}
 
 		// Save this sample
-		d->prev[d->prev_idx] = sample;
+		d->prev[d->prev_idx] = sample_sign;
 		d->prev_idx = (d->prev_idx + 1) % d->prev_size;
 
 		(*samples)++;
